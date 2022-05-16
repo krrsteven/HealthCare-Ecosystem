@@ -1,0 +1,159 @@
+---
+title: "Dorcas, K. & Steven, K.(2022); Healthcare ecosystem: Sample Data from Global Health Observatory"
+output: 
+  flexdashboard::flex_dashboard:
+    orientation: rows
+    theme: darkly
+    social: menu
+runtime: shiny
+---
+
+```{r Packages, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(dplyr)
+library(tidyverse)
+library(countrycode)
+library(WDI)
+library(rgho)
+library(funModeling)
+library(plotly)
+library(sjlabelled)
+library(flexdashboard)
+library(shiny)
+library(htmltools)
+```
+
+
+```{r data, include=FALSE}
+
+indicators_name <- c("Preparedness",
+                "Median availability of selected generic medicines",
+                "Ill-defined causes in cause-of-death registration",
+                "Median consumer price ratio of selected generic medicines",
+                "Care-seeking by type of patient and source of care")
+
+indicators <- data.frame()
+
+for (i in indicators_name) {
+  indicator_code <- rgho:::to_data_frame(search_codes(i, dimension = "GHO"))
+  indicators <- rbind.data.frame(indicators, indicator_code)
+}
+
+
+raw_data = data.frame(COUNTRY=character())
+
+for (i in indicators$ID) {
+  result <- get_gho_data(
+    dimension = "GHO",
+    filter = list(
+      REGION = "AFR"),
+    code = i
+  )
+  if (class(result$YEAR)=="numeric") {
+    result = result %>% group_by(COUNTRY) %>% 
+      slice(which.max(YEAR)) 
+  }
+  
+  indicator_data =  result %>% 
+    select(COUNTRY, `Display Value`)
+  colnames(indicator_data)[2] <- i
+  k=match(i,indicators$ID)
+  label(indicator_data[[i]]) <- indicators[k,1]
+  raw_data <- full_join(raw_data, indicator_data)
+}
+
+clean_data <- raw_data %>% 
+  label_to_colnames() %>%
+  mutate(Country = countrycode(COUNTRY,
+                               origin = "iso3c",
+                               destination = "country.name"),
+         COUNTRY = NULL
+         )
+
+clean_data[,1:8] <- sapply(clean_data[,1:8],as.numeric)
+```
+
+
+```{r, include=FALSE}
+# Exploratory Analysis
+data_prof=profiling_num(clean_data)
+describe(clean_data)
+
+```
+
+
+Inputs {.sidebar}
+-----------------------------------------------------------------------
+
+```{r, echo=FALSE}
+
+selectInput("indicator", label = "Select indicator:",
+          choices = colnames(clean_data)[-9], width = "200%")
+
+reactive_data <- reactive({
+  clean_data %>% select(Country, input$indicator)
+})
+```
+
+Row
+----------------------------------------------------------------------- 
+
+```{r visual object, echo=FALSE}
+g <- list(
+  scope = 'africa',
+  projection = list(type = 'albers'),
+  showlakes = TRUE,
+  lakecolor = toRGB('LightBlue')
+)
+
+m <- list(
+  l = 10,
+  r = 10,
+  b = 10,
+  t =40,
+  pad = 1)
+
+renderPlotly({
+  plot_data <- reactive_data() 
+  plot_data <- plot_data %>%
+    rename(main_indicator=input$indicator)
+  
+  fig <- plot_geo(plot_data, 
+                    locationmode = 'country names', 
+                    text = ~paste0(plot_data$Country, ": ",  plot_data$main_indicator)
+                  )
+  
+  fig <- fig %>% add_trace(
+    z = ~main_indicator, locations = ~Country, hoverinfo = "text" ,
+    colors = RColorBrewer::brewer.pal(11, "BrBG")[6:11]
+  )
+  fig <- fig %>% hide_colorbar()
+  fig <- fig %>% layout(title = paste0(input$indicator),
+    margin=m,
+    geo = g, annotations = list(x = 0.2 , y = 1.05, text = " ", showarrow = F, 
+                                xref='paper', yref='paper'), 
+    showlegend = FALSE
+  ) 
+  
+  fig
+
+})
+
+```
+
+```{r, include=FALSE}
+library(tidyr)
+
+data_long <- clean_data %>% filter(Country=="Rwanda") %>% gather(indicator, value, Preparedness:`Care-seeking by type of patient and source of care (%)`, factor_key=TRUE)
+
+fig <- plot_ly(
+    x = data_long$indicator,
+    y = data_long$value,
+    type = "bar"
+)
+
+fig
+```
+
+
