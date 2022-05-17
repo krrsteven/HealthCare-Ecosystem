@@ -1,5 +1,5 @@
 ---
-title: "Dorcas, K. & Steven, K.(2022); Healthcare ecosystem: Sample Data from Global Health Observatory"
+title: "Healthcare ecosystem: Sample Data from Global Health Observatory (Dorcas, K. & Steven, K.)"
 output: 
   flexdashboard::flex_dashboard:
     orientation: rows
